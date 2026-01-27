@@ -137,24 +137,24 @@ def main():
                             )
                             st.plotly_chart(fig_debug, use_container_width=True)
             
-            # PREDIKSI
-            with st.spinner("Melakukan prediksi..."):
-                prediction = model.predict(features)
-                prediction_proba = model.predict_proba(features)
+                        # PREDIKSI
+                        with st.spinner("Melakukan prediksi..."):
+                            prediction = model.predict(features)
+                            prediction_proba = model.predict_proba(features)
             
-            # SIMPAN HASIL
-            st.session_state.prediction = {
-                'class': prediction[0],
-                'probability': prediction_proba[0],
-                'confidence': np.max(prediction_proba[0]),
-                'features_shape': features.shape
-            }
+                        # SIMPAN HASIL
+                        st.session_state.prediction = {
+                            'class': prediction[0],
+                            'probability': prediction_proba[0],
+                            'confidence': np.max(prediction_proba[0]),
+                            'features_shape': features.shape
+                        }
             
-            st.success("✅ Klasifikasi berhasil!")
+                        st.success("✅ Klasifikasi berhasil!")
             
-        except Exception as e:
-            st.error(f"❌ Error saat klasifikasi: {str(e)}")
-            # Tampilkan error detail untuk debugging
-            with st.expander("Detail Error"):
-                st.code(str(e))
-            st.session_state.prediction = None
+                    except Exception as e:
+                        st.error(f"❌ Error saat klasifikasi: {str(e)}")
+                        # Tampilkan error detail untuk debugging
+                        with st.expander("Detail Error"):
+                            st.code(str(e))
+                        st.session_state.prediction = None
