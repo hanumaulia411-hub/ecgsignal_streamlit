@@ -9,7 +9,6 @@ from preprocess import preprocess_ekg, dwt_denoise
 # ========== KONFIGURASI HALAMAN ==========
 st.set_page_config(
     page_title="Klasifikasi ECG - Aktif vs Tenang",
-    page_icon="❤️",
     layout="wide",
     initial_sidebar_state="expanded"  # Sidebar terbuka
 )
@@ -23,7 +22,7 @@ if 'file_name' not in st.session_state:
     st.session_state.file_name = None
 
 # ========== JUDUL UTAMA ==========
-st.title("🫀 Klasifikasi Sinyal ECG: Aktif vs Tenang")
+st.title("Klasifikasi Sinyal ECG: Aktif vs Tenang")
 st.markdown("Upload sinyal ECG dalam format CSV untuk diklasifikasikan")
 st.divider()
 
@@ -129,7 +128,7 @@ def main():
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.info("👈 **Silakan upload file CSV melalui sidebar di sebelah kiri**")
+            st.info("**Silakan upload file CSV melalui sidebar di sebelah kiri**")
             
             st.markdown("""
             ### 📝 Petunjuk Penggunaan:
