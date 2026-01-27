@@ -102,40 +102,40 @@ def main():
             
             # Tombol untuk klasifikasi
             if st.button("🚀 Mulai Klasifikasi", type="primary", use_container_width=True):
-    with st.spinner("Memproses sinyal..."):
-        try:
-            # TAMPILKAN INFO WINDOW
-            st.info(f"📏 Menggunakan window: 500 samples (2 detik @ 250Hz)")
+                with st.spinner("Memproses sinyal..."):
+                    try:
+                        # TAMPILKAN INFO WINDOW
+                        st.info(f"📏 Menggunakan window: 500 samples (2 detik @ 250Hz)")
+                        
+                        # Preprocess - akan menghasilkan shape (1, 500)
+                        features = preprocess_ekg(data)
             
-            # Preprocess - akan menghasilkan shape (1, 500)
-            features = preprocess_ekg(data)
-            
-            # DEBUG: Tampilkan informasi
-            with st.expander("🔍 Detail Preprocessing", expanded=False):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Input data:** {len(data)} samples")
-                    st.write(f"**Output shape:** {features.shape}")
-                with col2:
-                    st.write(f"**Features range:** [{features.min():.3f}, {features.max():.3f}]")
-                    st.write(f"**Features mean:** {features.mean():.3f}")
-                
-                # Plot window yang akan diprediksi
-                fig_debug = go.Figure()
-                fig_debug.add_trace(go.Scatter(
-                    x=list(range(500)),
-                    y=features[0],
-                    mode='lines',
-                    line=dict(color='green', width=2),
-                    name='Window untuk Prediksi'
-                ))
-                fig_debug.update_layout(
-                    title="Window 500 Samples yang akan Diprediksi",
-                    xaxis_title="Sample Index (0-499)",
-                    yaxis_title="Amplitude (Normalized)",
-                    height=300
-                )
-                st.plotly_chart(fig_debug, use_container_width=True)
+                        # DEBUG: Tampilkan informasi
+                        with st.expander("🔍 Detail Preprocessing", expanded=False):
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.write(f"**Input data:** {len(data)} samples")
+                                st.write(f"**Output shape:** {features.shape}")
+                            with col2:
+                                st.write(f"**Features range:** [{features.min():.3f}, {features.max():.3f}]")
+                                st.write(f"**Features mean:** {features.mean():.3f}")
+                            
+                            # Plot window yang akan diprediksi
+                            fig_debug = go.Figure()
+                            fig_debug.add_trace(go.Scatter(
+                                x=list(range(500)),
+                                y=features[0],
+                                mode='lines',
+                                line=dict(color='green', width=2),
+                                name='Window untuk Prediksi'
+                            ))
+                            fig_debug.update_layout(
+                                title="Window 500 Samples yang akan Diprediksi",
+                                xaxis_title="Sample Index (0-499)",
+                                yaxis_title="Amplitude (Normalized)",
+                                height=300
+                            )
+                            st.plotly_chart(fig_debug, use_container_width=True)
             
             # PREDIKSI
             with st.spinner("Melakukan prediksi..."):
