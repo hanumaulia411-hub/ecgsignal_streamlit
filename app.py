@@ -71,12 +71,14 @@ def main():
                 st.write(f"**Jumlah sampel:** {len(data)}")
                 st.write(f"**Nilai min/max:** {np.min(data):.4f} / {np.max(data):.4f}")
                 st.write(f"**Rata-rata:** {np.mean(data):.4f}")
-            
+
             with col2:
-                # Buat dataframe untuk tampilan tabel
+                # Tentukan berapa banyak data yang akan ditampilkan
+                display_count = min(10, len(data))
+                # Buat dataframe dengan jumlah yang sama
                 df_preview = pd.DataFrame({
-                    'Sample': range(1, min(11, len(data)) + 1),
-                    'Value': data[:10]
+                    'Sample': range(1, display_count + 1),
+                    'Value': data[:display_count]
                 })
                 st.dataframe(df_preview, height=200)
             
