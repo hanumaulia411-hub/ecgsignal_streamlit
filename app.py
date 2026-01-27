@@ -101,87 +101,60 @@ def main():
             st.plotly_chart(fig, use_container_width=True)
             
             # Tombol untuk klasifikasi
-            if st.button("🚀 Klasifikasikan Sinyal", type="primary"):
-                with st.spinner("Memproses sinyal..."):
-                    try:
-                        # 1. Preprocess data
-                        features = preprocess_ekg(data)
-                        st.write(f"Shape fitur: {features.shape}")
-                        
-                        # 2. Lakukan prediksi
-                        prediction = model.predict(features)
-                        prediction_proba = model.predict_proba(features)
-                        
-                        # 3. Simpan hasil di session state
-                        st.session_state.prediction = {
-                            'class': prediction[0],
-                            'probability': prediction_proba[0],
-                            'confidence': np.max(prediction_proba[0])
-                        }
-                        
-                    except Exception as e:
-                        st.error(f"Error saat klasifikasi: {str(e)}")
-                        st.session_state.prediction = None
-    else:
-        st.info("👈 Silakan upload file CSV melalui sidebar di sebelah kiri")
-        
-        # Contoh data format
-        st.subheader("📋 Format File Contoh")
-        st.code("""0.952
-1.023
-0.876
--0.234
-0.567
-...""", language="text")
-    
-    # Tampilkan hasil prediksi jika ada
-    if st.session_state.prediction is not None:
-        st.subheader("🎯 Hasil Klasifikasi")
-        
-        pred = st.session_state.prediction
-        kelas = "AKTIF" if pred['class'] == 1 else "TENANG"
-        confidence = pred['confidence'] * 100
-        
-        # Tampilkan hasil dengan styling
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Hasil", kelas)
-        
-        with col2:
-            st.metric("Confidence", f"{confidence:.1f}%")
-        
-        with col3:
-            # Progress bar
-            st.progress(pred['confidence'])
-        
-        # Tampilkan probabilitas detail
-        st.subheader("📈 Detail Probabilitas")
-        prob_df = pd.DataFrame({
-            'Kelas': ['Tenang', 'Aktif'],
-            'Probabilitas': pred['probability']
-        })
-        st.bar_chart(prob_df.set_index('Kelas'))
-        
-        # Interpretasi
-        st.subheader("💡 Interpretasi")
-        if kelas == "AKTIF":
-            st.success("""
-            **Sinyal menunjukkan aktivitas jantung yang tinggi.** 
-            Kemungkinan pasien sedang dalam kondisi:
-            - Berolahraga
-            - Stres
-            - Aktivitas fisik
-            """)
-        else:
-            st.info("""
-            **Sinyal menunjukkan aktivitas jantung yang tenang.**
-            Kemungkinan pasien sedang dalam kondisi:
-            - Istirahat
-            - Relaksasi
-            - Tidur
-            """)
-
-# Jalankan aplikasi
-if __name__ == "__main__":
-    main()
+            if st.button("🚀 Mulai Klasifikasi", type="primary", use_container_width=True):
+    with st.spinner("Memproses sinyal..."):
+        try:
+            # TAMPILKAN INFO WINDOW
+            st.info(f"📏 Menggunakan window: 500 samples (2 detik @ 250Hz)")
+            
+            # Preprocess - akan menghasilkan shape (1, 500)
+            features = preprocess_ekg(data)
+            
+            # DEBUG: Tampilkan informasi
+            with st.expander("🔍 Detail Preprocessing", expanded=False):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Input data:** {len(data)} samples")
+                    st.write(f"**Output shape:** {features.shape}")
+                with col2:
+                    st.write(f"**Features range:** [{features.min():.3f}, {features.max():.3f}]")
+                    st.write(f"**Features mean:** {features.mean():.3f}")
+                
+                # Plot window yang akan diprediksi
+                fig_debug = go.Figure()
+                fig_debug.add_trace(go.Scatter(
+                    x=list(range(500)),
+                    y=features[0],
+                    mode='lines',
+                    line=dict(color='green', width=2),
+                    name='Window untuk Prediksi'
+                ))
+                fig_debug.update_layout(
+                    title="Window 500 Samples yang akan Diprediksi",
+                    xaxis_title="Sample Index (0-499)",
+                    yaxis_title="Amplitude (Normalized)",
+                    height=300
+                )
+                st.plotly_chart(fig_debug, use_container_width=True)
+            
+            # PREDIKSI
+            with st.spinner("Melakukan prediksi..."):
+                prediction = model.predict(features)
+                prediction_proba = model.predict_proba(features)
+            
+            # SIMPAN HASIL
+            st.session_state.prediction = {
+                'class': prediction[0],
+                'probability': prediction_proba[0],
+                'confidence': np.max(prediction_proba[0]),
+                'features_shape': features.shape
+            }
+            
+            st.success("✅ Klasifikasi berhasil!")
+            
+        except Exception as e:
+            st.error(f"❌ Error saat klasifikasi: {str(e)}")
+            # Tampilkan error detail untuk debugging
+            with st.expander("Detail Error"):
+                st.code(str(e))
+            st.session_state.prediction = None
