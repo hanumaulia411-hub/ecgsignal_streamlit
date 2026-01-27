@@ -5,11 +5,14 @@ from model import predict
 
 st.title("Klasifikasi Sinyal EKG")
 
-uploaded_file = st.file_uploader("Upload file EKG (.txt)")
+@st.cache_resource
+def load_model():
+    model = joblib.load('rf_model.pkl')  # Gunakan file model yang ada di repo
+    return model
 
-if uploaded_file:
-    signal = np.loadtxt(uploaded_file)
-    features = preprocess_ekg(signal)
-    result = predict(features)
+# Kemudian saat prediksi:
+features = preprocess_ekg(data)  # Output dari preprocess.py yang sudah diperbaiki
+prediction = model.predict(features)  # Prediksi dengan Random Forest
+# prediction_proba = model.predict_proba(features)  # (Opsional) Untuk mendapatkan probabilitas
 
     st.success(f"Hasil klasifikasi: {result[0]}")
