@@ -15,4 +15,4 @@ features = preprocess_ekg(data)  # Output dari preprocess.py yang sudah diperbai
 prediction = model.predict(features)  # Prediksi dengan Random Forest
 # prediction_proba = model.predict_proba(features)  # (Opsional) Untuk mendapatkan probabilitas
 
-    st.success(f"Hasil klasifikasi: {result[0]}")
+st.success(f"Hasil klasifikasi: {result[0]}")
