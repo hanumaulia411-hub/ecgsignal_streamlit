@@ -1,413 +1,189 @@
-# app.py - VERSI DIPERBAIKI UNTUK STREAMLIT CLOUD
 import streamlit as st
 import numpy as np
 import pandas as pd
 import joblib
-import plotly.graph_objects as go
-from preprocess import preprocess_ekg, dwt_denoise
+import pywt
+from scipy.stats import skew, kurtosis
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder
 
-# ========== KONFIGURASI HALAMAN ==========
-st.set_page_config(
-    page_title="Klasifikasi ECG - Aktif vs Tenang",
-    layout="wide",
-    initial_sidebar_state="expanded"  # Sidebar terbuka
-)
+# ==================== FUNGSI PREPROCESSING ====================
 
-# ========== INISIALISASI SESSION STATE ==========
-if 'uploaded_data' not in st.session_state:
-    st.session_state.uploaded_data = None
-if 'prediction' not in st.session_state:
-    st.session_state.prediction = None
-if 'file_name' not in st.session_state:
-    st.session_state.file_name = None
-
-# ========== JUDUL UTAMA ==========
-st.title("Klasifikasi Sinyal ECG: Aktif vs Tenang")
-st.markdown("Upload sinyal ECG dalam format CSV untuk diklasifikasikan")
-st.divider()
-
-# ========== LOAD MODEL ==========
-@st.cache_resource
-def load_model():
-    try:
-        model = joblib.load('rf_model.pkl')
-        st.success("✅ Model berhasil dimuat")
-        return model
-    except Exception as e:
-        st.error(f"❌ Error loading model: {e}")
-        return None
-
-# ========== FUNGSI BANTU ==========
-def read_uploaded_file(file):
-    """Membaca file CSV yang diupload"""
-    try:
-        if file is None:
-            return None
-        
-        # Coba beberapa format CSV
-        try:
-            # Format 1: Satu kolom tanpa header
-            df = pd.read_csv(file, header=None)
-        except:
-            # Format 2: Dengan header
-            file.seek(0)  # Reset file pointer
-            df = pd.read_csv(file)
-        
-        # Ambil kolom pertama (asumsi sinyal ada di kolom pertama)
-        if df.shape[1] > 0:
-            signal = df.iloc[:, 0].values
-            signal = signal.astype(np.float32)
-            
-            # Hapus NaN jika ada
-            signal = signal[~np.isnan(signal)]
-            
-            return signal
+def dwt_denoise(signal, wavelet='db6', level=3):
+    """Denoising dengan DWT"""
+    coeffs = pywt.wavedec(signal, wavelet, level=level)
+    
+    sigma = np.median(np.abs(coeffs[-1])) / 0.6745
+    uthresh = 0.3 * sigma * np.sqrt(2 * np.log(len(signal)))
+    
+    coeffs_thresh = [coeffs[0]]
+    for i, c in enumerate(coeffs[1:], start=1):
+        if i >= 3:
+            coeffs_thresh.append(pywt.threshold(c, uthresh, mode='soft'))
         else:
-            st.error("File tidak berisi data")
-            return None
-            
-    except Exception as e:
-        st.error(f"Gagal membaca file: {str(e)}")
-        return None
-
-# ========== SIDEBAR ==========
-st.sidebar.header("📁 **Upload Data ECG**")
-st.sidebar.markdown("---")
-
-# File uploader di sidebar
-uploaded_file = st.sidebar.file_uploader(
-    "Pilih file CSV",
-    type=['csv', 'txt'],
-    help="File harus berisi sinyal ECG (satu kolom)"
-)
-
-# Informasi di sidebar
-st.sidebar.markdown("---")
-st.sidebar.info("""
-**📋 Format File:**
-- CSV dengan satu kolom
-- Nilai numerik (float)
-- Minimal 500 sample
-- Contoh: `0.952, 1.023, 0.876, ...`
-""")
-
-# Contoh data download
-st.sidebar.markdown("---")
-st.sidebar.subheader("📥 Contoh Data")
-
-if st.sidebar.button("Generate Contoh Data"):
-    # Generate contoh sinyal ECG
-    t = np.linspace(0, 8*np.pi, 2000)
-    example_signal = np.sin(t) + 0.3*np.sin(3*t) + 0.1*np.random.randn(2000)
+            coeffs_thresh.append(c)
     
-    # Buat DataFrame dan simpan
-    df_example = pd.DataFrame(example_signal, columns=['ECG_Signal'])
-    csv = df_example.to_csv(index=False)
-    
-    # Download button
-    st.sidebar.download_button(
-        label="⬇️ Download Contoh CSV",
-        data=csv,
-        file_name="contoh_ecg.csv",
-        mime="text/csv"
-    )
+    return pywt.waverec(coeffs_thresh, wavelet)[:len(signal)]
 
-# ========== MAIN APP ==========
+def extract_features_from_window(window_signal):
+    """Ekstraksi fitur dari sebuah window sinyal"""
+    features = {
+        'mean': np.mean(window_signal),
+        'std': np.std(window_signal),
+        'rms': np.sqrt(np.mean(window_signal**2)),
+        'skewness': skew(window_signal),
+        'kurtosis': kurtosis(window_signal),
+        'max': np.max(window_signal),
+        'min': np.min(window_signal),
+        'ptp': np.ptp(window_signal),
+        'energy': np.sum(window_signal**2)
+    }
+    return features
+
+def preprocess_ecg_signal(signal, sampling_rate=250):
+    """Preprocessing lengkap untuk sinyal ECG baru"""
+    # 1. Denoising
+    signal_filtered = dwt_denoise(signal)
+    
+    # 2. Windowing (2 detik dengan 50% overlap)
+    window_sec = 2
+    window_size = int(window_sec * sampling_rate)
+    step_size = int(window_size / 2)
+    
+    windows = []
+    for start in range(0, len(signal_filtered) - window_size + 1, step_size):
+        segment = signal_filtered[start:start + window_size]
+        windows.append(segment)
+    
+    # 3. Ekstraksi fitur dari setiap window
+    features_list = []
+    for window in windows:
+        features = extract_features_from_window(window)
+        features_list.append(features)
+    
+    # 4. Konversi ke DataFrame dan reshape untuk model
+    df_features = pd.DataFrame(features_list)
+    
+    # Untuk Random Forest yang menggunakan sinyal mentah (flatten)
+    # Jika model menggunakan fitur yang diekstrak, sesuaikan ini
+    X_flat = np.array(windows).reshape(len(windows), -1)
+    
+    return df_features, X_flat, windows
+
+# ==================== STREAMLIT APP ====================
+
 def main():
-    # Load model
-    model = load_model()
+    st.title("Klasifikasi Sinyal ECG")
+    st.write("Klasifikasi kondisi: Bermain vs Tenang")
     
-    if model is None:
-        st.error("Aplikasi tidak dapat berjalan tanpa model. Pastikan file rf_model.pkl ada.")
-        st.stop()
+    # Sidebar untuk upload file
+    st.sidebar.header("Upload Data ECG")
+    uploaded_file = st.sidebar.file_uploader("Pilih file ECG (.txt)", type=['txt'])
     
-    # ========== TAMPILAN UTAMA BERDASARKAN STATE ==========
+    # Pilihan: Input manual atau upload file
+    option = st.sidebar.radio("Pilih input:", ["Upload File", "Input Manual"])
     
-    # STATE 1: Belum ada file yang diupload
-    if uploaded_file is None and st.session_state.uploaded_data is None:
-        col1, col2 = st.columns([2, 1])
+    if option == "Upload File" and uploaded_file is not None:
+        # Baca file upload
+        try:
+            data = np.loadtxt(uploaded_file)
+            st.success(f"File berhasil diupload! Jumlah sampel: {len(data)}")
+        except Exception as e:
+            st.error(f"Error membaca file: {e}")
+            return
+    
+    elif option == "Input Manual":
+        # Input manual untuk demo
+        st.sidebar.subheader("Parameter Sinyal Demo")
+        signal_type = st.sidebar.selectbox("Tipe Sinyal", ["Normal", "Aritmia Ringan"])
+        duration = st.sidebar.slider("Durasi (detik)", 5, 30, 10)
         
-        with col1:
-            st.info("**Silakan upload file CSV melalui sidebar di sebelah kiri**")
-            
-            st.markdown("""
-            ### 📝 Petunjuk Penggunaan:
-            1. **Upload file** CSV melalui sidebar
-            2. **Pratinjau sinyal** akan muncul otomatis
-            3. **Klik 'Mulai Klasifikasi'** untuk analisis
-            4. **Lihat hasil** dan interpretasi
-            
-            ### 🔧 Spesifikasi Teknis:
-            - Model: Random Forest (500 fitur)
-            - Preprocessing: DWT denoising (db6, level=3)
-            - Window: 500 samples (2 detik @ 250Hz)
-            - Output: Aktif atau Tenang
-            """)
+        # Generate sinyal demo
+        t = np.linspace(0, duration, 250*duration)
+        if signal_type == "Normal":
+            data = np.sin(2*np.pi*1*t) + 0.5*np.sin(2*np.pi*2*t) + 0.1*np.random.randn(len(t))
+        else:
+            data = np.sin(2*np.pi*1.2*t) + 0.8*np.sin(2*np.pi*3*t) + 0.3*np.random.randn(len(t))
         
-        with col2:
-            st.image("https://img.icons8.com/color/300/000000/ecg.png", 
-                    caption="ECG Signal Analysis")
-            
-            st.markdown("""
-            **📊 Contoh Format:**
-            ```
-            0.952
-            1.023
-            0.876
-            -0.234
-            0.567
-            ```
-            """)
-        
+        st.info(f"Menggunakan sinyal demo ({signal_type}, {duration} detik)")
+    
+    else:
+        st.warning("Silakan upload file ECG atau pilih input manual")
         return
     
-    # STATE 2: Ada file baru yang diupload
-    if uploaded_file is not None and st.session_state.file_name != uploaded_file.name:
-        with st.spinner("Membaca file..."):
-            data = read_uploaded_file(uploaded_file)
-            
-            if data is not None:
-                st.session_state.uploaded_data = data
-                st.session_state.file_name = uploaded_file.name
-                st.session_state.prediction = None  # Reset prediksi lama
-                
-                st.success(f"✅ File '{uploaded_file.name}' berhasil dibaca")
-                st.rerun()  # Refresh untuk tampilkan data
-            else:
-                st.error("Gagal membaca file")
-                return
+    # Tampilkan sinyal asli
+    st.subheader("Sinyal ECG Asli")
+    fig, ax = plt.subplots(figsize=(12, 4))
+    ax.plot(data[:1000])  # Tampilkan 1000 sampel pertama
+    ax.set_xlabel("Sampel")
+    ax.set_ylabel("Amplitudo")
+    ax.set_title("Sinyal ECG (1000 sampel pertama)")
+    ax.grid(True)
+    st.pyplot(fig)
     
-    # STATE 3: Data sudah diupload, tampilkan
-    if st.session_state.uploaded_data is not None:
-        data = st.session_state.uploaded_data
-        
-        # Header dengan nama file
-        st.subheader(f"📄 File: {st.session_state.file_name}")
-        
-        # ========== TAB UNTUK VISUALISASI ==========
-        tab1, tab2, tab3 = st.tabs(["📈 Raw Signal", "🌀 After DWT", "🎯 Prediction Window"])
-        
-        with tab1:
-            st.markdown("### Sinyal ECG Mentah")
-            
-            col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
-            with col_stat1:
-                st.metric("Total Samples", f"{len(data):,}")
-            with col_stat2:
-                st.metric("Mean", f"{np.mean(data):.4f}")
-            with col_stat3:
-                st.metric("Std Dev", f"{np.std(data):.4f}")
-            with col_stat4:
-                st.metric("Duration", f"{len(data)/250:.1f} detik")
-            
-            # Plot sinyal mentah
-            display_points = min(1000, len(data))
-            fig_raw = go.Figure()
-            fig_raw.add_trace(go.Scatter(
-                x=list(range(display_points)),
-                y=data[:display_points],
-                mode='lines',
-                line=dict(color='blue', width=1),
-                name='Raw ECG'
-            ))
-            fig_raw.update_layout(
-                title=f"Raw ECG Signal (First {display_points} samples)",
-                xaxis_title="Sample Index",
-                yaxis_title="Amplitude",
-                height=400
-            )
-            st.plotly_chart(fig_raw, use_container_width=True)
-        
-        with tab2:
-            st.markdown("### Setelah DWT Denoising (db6, level=3)")
-            
-            # Apply DWT
+    # Tombol untuk proses
+    if st.button("Proses Klasifikasi"):
+        with st.spinner("Memproses sinyal ECG..."):
             try:
-                data_dwt = dwt_denoise(data)
+                # Load model yang sudah disimpan
+                model = joblib.load("rf_model.pkl")
                 
-                col_dwt1, col_dwt2, col_dwt3 = st.columns(3)
-                with col_dwt1:
-                    noise_reduction = (1 - np.std(data_dwt)/np.std(data)) * 100
-                    st.metric("Noise Reduction", f"{noise_reduction:.1f}%")
-                with col_dwt2:
-                    st.metric("New Mean", f"{np.mean(data_dwt):.4f}")
-                with col_dwt3:
-                    st.metric("New Std", f"{np.std(data_dwt):.4f}")
+                # Preprocessing
+                df_features, X_flat, windows = preprocess_ecg_signal(data)
                 
-                # Plot setelah DWT
-                fig_dwt = go.Figure()
-                fig_dwt.add_trace(go.Scatter(
-                    x=list(range(min(1000, len(data_dwt)))),
-                    y=data_dwt[:min(1000, len(data_dwt))],
-                    mode='lines',
-                    line=dict(color='green', width=1.5),
-                    name='DWT Denoised'
-                ))
-                fig_dwt.update_layout(
-                    title="After Wavelet Denoising",
-                    xaxis_title="Sample Index",
-                    yaxis_title="Amplitude",
-                    height=400
-                )
-                st.plotly_chart(fig_dwt, use_container_width=True)
+                # Prediksi
+                predictions = model.predict(X_flat)
+                
+                # Decode label
+                le = LabelEncoder()
+                le.fit(['bermain', 'tenang'])
+                pred_labels = le.inverse_transform(predictions)
+                
+                # Hasil
+                st.subheader("Hasil Klasifikasi")
+                
+                # Hitung persentase
+                total_windows = len(pred_labels)
+                count_bermain = np.sum(pred_labels == 'bermain')
+                count_tenang = np.sum(pred_labels == 'tenang')
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Bermain", f"{count_bermain} window", 
+                             f"{(count_bermain/total_windows*100):.1f}%")
+                with col2:
+                    st.metric("Tenang", f"{count_tenang} window", 
+                             f"{(count_tenang/total_windows*100):.1f}%")
+                
+                # Visualisasi beberapa window dengan prediksi
+                st.subheader("Contoh Window dengan Prediksi")
+                fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+                axes = axes.flatten()
+                
+                for i in range(min(6, len(windows))):
+                    axes[i].plot(windows[i])
+                    axes[i].set_title(f"Window {i+1}: {pred_labels[i]}")
+                    axes[i].grid(True)
+                    axes[i].set_xlabel("Sampel")
+                    axes[i].set_ylabel("Amplitudo")
+                
+                plt.tight_layout()
+                st.pyplot(fig)
+                
+                # Tampilkan fitur yang diekstrak
+                st.subheader("Fitur yang Diekstrak (5 window pertama)")
+                st.dataframe(df_features.head())
+                
+                # Kesimpulan
+                st.subheader("Kesimpulan")
+                if count_bermain > count_tenang:
+                    st.success("✅ Kondisi dominan: AKTIF (Aktif)")
+                else:
+                    st.success("✅ Kondisi dominan: TENANG (Normal)")
                 
             except Exception as e:
-                st.error(f"Error dalam DWT processing: {str(e)}")
-        
-        with tab3:
-            st.markdown("### Window 500 Samples untuk Prediksi")
-            
-            # Preprocess untuk dapat window
-            features = preprocess_ekg(data)
-            
-            st.info(f"**Window Shape:** {features.shape} | **Sample Rate:** 250Hz | **Duration:** 2 detik")
-            
-            # Plot window
-            fig_window = go.Figure()
-            fig_window.add_trace(go.Scatter(
-                x=list(range(500)),
-                y=features[0],
-                mode='lines',
-                line=dict(color='red', width=2),
-                name='Prediction Window'
-            ))
-            fig_window.update_layout(
-                title="500-Sample Window (Normalized)",
-                xaxis_title="Sample Index (0-499)",
-                yaxis_title="Normalized Amplitude",
-                height=400
-            )
-            st.plotly_chart(fig_window, use_container_width=True)
-            
-            # Statistik window
-            st.write("**Window Statistics:**")
-            col_win1, col_win2, col_win3, col_win4 = st.columns(4)
-            with col_win1:
-                st.metric("Window Mean", f"{np.mean(features[0]):.4f}")
-            with col_win2:
-                st.metric("Window Std", f"{np.std(features[0]):.4f}")
-            with col_win3:
-                st.metric("Min", f"{np.min(features[0]):.4f}")
-            with col_win4:
-                st.metric("Max", f"{np.max(features[0]):.4f}")
-        
-        # ========== TOMBOL KLASIFIKASI ==========
-        st.divider()
-        st.subheader("🔬 Analisis Klasifikasi")
-        
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
-        
-        with col_btn1:
-            classify_btn = st.button("🚀 **Mulai Klasifikasi**", 
-                                    type="primary", 
-                                    use_container_width=True)
-        
-        with col_btn2:
-            if st.button("🔄 **Upload File Baru**", use_container_width=True):
-                # Reset state
-                st.session_state.uploaded_data = None
-                st.session_state.file_name = None
-                st.session_state.prediction = None
-                st.rerun()
-        
-        # Jika tombol klasifikasi ditekan
-        if classify_btn:
-            with st.spinner("Melakukan klasifikasi..."):
-                try:
-                    # Predict
-                    prediction = model.predict(features)
-                    prediction_proba = model.predict_proba(features)
-                    
-                    # Simpan hasil
-                    st.session_state.prediction = {
-                        'class': prediction[0],
-                        'probability': prediction_proba[0],
-                        'confidence': np.max(prediction_proba[0]),
-                        'class_name': "AKTIF" if prediction[0] == 1 else "TENANG"
-                    }
-                    
-                    st.success("✅ Klasifikasi berhasil!")
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error dalam klasifikasi: {str(e)}")
-        
-        # ========== TAMPILKAN HASIL JIKA ADA ==========
-        if st.session_state.prediction is not None:
-            st.divider()
-            st.subheader("🎯 **Hasil Klasifikasi**")
-            
-            pred = st.session_state.prediction
-            confidence_percent = pred['confidence'] * 100
-            
-            # Tampilan hasil utama
-            col_res1, col_res2, col_res3 = st.columns(3)
-            
-            with col_res1:
-                # Box dengan warna berdasarkan kelas
-                if pred['class_name'] == "AKTIF":
-                    st.markdown("""
-                    <div style='background-color: #ff6b6b; padding: 20px; border-radius: 10px; text-align: center;'>
-                    <h2 style='color: white; margin: 0;'>AKTIF</h2>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown("""
-                    <div style='background-color: #51cf66; padding: 20px; border-radius: 10px; text-align: center;'>
-                    <h2 style='color: white; margin: 0;'>TENANG</h2>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            with col_res2:
-                st.metric("Confidence Level", f"{confidence_percent:.1f}%")
-                st.progress(pred['confidence'])
-            
-            with col_res3:
-                # Probabilitas detail
-                prob_df = pd.DataFrame({
-                    'Kelas': ['Tenang', 'Aktif'],
-                    'Probabilitas': (pred['probability'] * 100).round(1)
-                })
-                st.dataframe(prob_df, use_container_width=True)
-            
-            # Interpretasi
-            st.subheader("💡 **Interpretasi Medis**")
-            
-            if pred['class_name'] == "AKTIF":
-                st.warning("""
-                **🫀 Aktivitas Jantung Tinggi Terdeteksi**
-                
-                **Kemungkinan Kondisi:**
-                - Aktivitas fisik sedang/berat
-                - Stres atau kecemasan
-                - Konsumsi kafein/stimulan
-                - Demam atau infeksi
-                - Hipertiroidisme
-                
-                **Rekomendasi:**
-                1. Monitor denyut jantung
-                2. Istirahat jika sedang beraktivitas
-                3. Konsultasi dokter jika:
-                   - Disertai nyeri dada
-                   - Pusing atau sesak napas
-                   - Berlangsung terus-menerus
-                """)
-            else:
-                st.success("""
-                **🫀 Aktivitas Jantung Normal/Tenang Terdeteksi**
-                
-                **Kemungkinan Kondisi:**
-                - Istirahat atau tidur
-                - Kondisi relaksasi
-                - Denyut jantung basal normal
-                - Kondisi meditasi
-                
-                **Rekomendasi:**
-                1. Kondisi normal
-                2. Lanjutkan aktivitas rutin
-                3. Monitor jika ada gejala lain
-                """)
+                st.error(f"Error dalam pemrosesan: {e}")
+                st.info("Pastikan model 'rf_model.pkl' ada di direktori yang sama")
 
-# ========== JALANKAN APLIKASI ==========
 if __name__ == "__main__":
     main()
