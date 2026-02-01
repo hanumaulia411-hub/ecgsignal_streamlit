@@ -111,15 +111,6 @@ def main():
         st.warning("Silakan upload file ECG atau pilih input manual")
         return
     
-    # Tampilkan sinyal asli
-    st.subheader("Sinyal ECG Asli")
-    fig, ax = plt.subplots(figsize=(12, 4))
-    ax.plot(data[:1000])  # Tampilkan 1000 sampel pertama
-    ax.set_xlabel("Sampel")
-    ax.set_ylabel("Amplitudo")
-    ax.set_title("Sinyal ECG (1000 sampel pertama)")
-    ax.grid(True)
-    st.pyplot(fig)
     
     # Tombol untuk proses
     if st.button("Proses Klasifikasi"):
@@ -155,20 +146,6 @@ def main():
                     st.metric("Tenang", f"{count_tenang} window", 
                              f"{(count_tenang/total_windows*100):.1f}%")
                 
-                # Visualisasi beberapa window dengan prediksi
-                st.subheader("Contoh Window dengan Prediksi")
-                fig, axes = plt.subplots(2, 3, figsize=(15, 8))
-                axes = axes.flatten()
-                
-                for i in range(min(6, len(windows))):
-                    axes[i].plot(windows[i])
-                    axes[i].set_title(f"Window {i+1}: {pred_labels[i]}")
-                    axes[i].grid(True)
-                    axes[i].set_xlabel("Sampel")
-                    axes[i].set_ylabel("Amplitudo")
-                
-                plt.tight_layout()
-                st.pyplot(fig)
                 
                 # Tampilkan fitur yang diekstrak
                 st.subheader("Fitur yang Diekstrak (5 window pertama)")
