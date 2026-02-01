@@ -147,9 +147,6 @@ def main():
                              f"{(count_tenang/total_windows*100):.1f}%")
                 
                 
-                # Tampilkan fitur yang diekstrak
-                st.subheader("Fitur yang Diekstrak (5 window pertama)")
-                st.dataframe(df_features.head())
                 
                 # Kesimpulan
                 st.subheader("Kesimpulan")
