@@ -108,13 +108,13 @@ def main():
         st.info(f"Menggunakan sinyal demo ({signal_type}, {duration} detik)")
     
     else:
-        st.warning("Silakan upload file ECG atau pilih input manual")
+        st.warning("Please upload ECG file or select manual input")
         return
     
     
     # Tombol untuk proses
-    if st.button("Proses Klasifikasi"):
-        with st.spinner("Memproses sinyal ECG..."):
+    if st.button("Classification Process"):
+        with st.spinner("Processing ECG signals..."):
             try:
                 # Load model yang sudah disimpan
                 model = joblib.load("rf_model.pkl")
@@ -131,7 +131,7 @@ def main():
                 pred_labels = le.inverse_transform(predictions)
                 
                 # Hasil
-                st.subheader("Hasil Klasifikasi")
+                st.subheader("Classification Results")
                 
                 # Hitung persentase
                 total_windows = len(pred_labels)
@@ -140,20 +140,20 @@ def main():
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Bermain", f"{count_bermain} window", 
+                    st.metric("Active", f"{count_bermain} window", 
                              f"{(count_bermain/total_windows*100):.1f}%")
                 with col2:
-                    st.metric("Tenang", f"{count_tenang} window", 
+                    st.metric("Calm", f"{count_tenang} window", 
                              f"{(count_tenang/total_windows*100):.1f}%")
                 
                 
                 
                 # Kesimpulan
-                st.subheader("Kesimpulan")
+                st.subheader("Conclusion")
                 if count_bermain > count_tenang:
-                    st.success("✅ Kondisi dominan: AKTIF (Aktif)")
+                    st.success("✅ Dominant condition: ACTIVE (Active)")
                 else:
-                    st.success("✅ Kondisi dominan: TENANG (Normal)")
+                    st.success("✅ Dominant condition: CALM (Normal)")
                 
             except Exception as e:
                 st.error(f"Error dalam pemrosesan: {e}")
