@@ -73,26 +73,26 @@ def preprocess_ecg_signal(signal, sampling_rate=250):
 # ==================== STREAMLIT APP ====================
 
 def main():
-    st.title("Klasifikasi Sinyal ECG")
-    st.write("Klasifikasi kondisi: Bermain vs Tenang")
+    st.title("Classification of ECG Signals")
+    st.write("Condition classification: Active vs Calm")
     
     # Sidebar untuk upload file
-    st.sidebar.header("Upload Data ECG")
-    uploaded_file = st.sidebar.file_uploader("Pilih file ECG (.txt)", type=['txt'])
+    st.sidebar.header("Upload ECG Data")
+    uploaded_file = st.sidebar.file_uploader("Select the ECG file (.txt)", type=['txt'])
     
     # Pilihan: Input manual atau upload file
-    option = st.sidebar.radio("Pilih input:", ["Upload File", "Input Manual"])
+    option = st.sidebar.radio("Pilih input:", ["Upload File", "Manual Input"])
     
     if option == "Upload File" and uploaded_file is not None:
         # Baca file upload
         try:
             data = np.loadtxt(uploaded_file)
-            st.success(f"File berhasil diupload! Jumlah sampel: {len(data)}")
+            st.success(f"File uploaded successfully! Sample count: {len(data)}")
         except Exception as e:
-            st.error(f"Error membaca file: {e}")
+            st.error(f"Error reading file: {e}")
             return
     
-    elif option == "Input Manual":
+    elif option == "Manual Input":
         # Input manual untuk demo
         st.sidebar.subheader("Parameter Sinyal Demo")
         signal_type = st.sidebar.selectbox("Tipe Sinyal", ["Normal", "Aritmia Ringan"])
